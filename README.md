@@ -1,6 +1,6 @@
 Oppilaiden hallinta kouluprojekti. Hyvin yksilöity tilanteeseen, ja en suosittelisi käyttöön. Julkisena tehtävänannon vaatimuksena.
 
-Scripti suunniteltu toimimaan Linux pohjaisella FreeIPA palvelimella, käyttö esim SSH:n läpi. Testattu Fedora Server 42, 43. Johon asennettuna FreeIPA server.
+Scripti suunniteltu toimimaan Linux pohjaisella FreeIPA palvelimella, käyttö esim SSH:n läpi. Testattu Fedora Server 42, 43. Johon asennettuna FreeIPA server, ja kieli asetettu olemaan Suomi.
 
 Pitäisi toimia muissakin koneissa, kunhan vaatimukset täyttyy, ja käyttäjätunnuksien sekä ryhmien muoto on samaa.
 
