@@ -191,7 +191,6 @@ list_users() {
     echo -n "Haluatko rajata luokan mukaan? (k/e): "
     read -r yn
 
-    group_filter=""
     members=""
     if [[ "$yn" == "k" ]]; then
         echo -n "Anna luokan nimi: "
@@ -202,7 +201,6 @@ list_users() {
     	    return
 	fi
         if ipa group-show "$group" &>/dev/null; then
-            group_filter="$group"
             echo "Näytetään vain luokan '$group' oppilaat."
             members=$(ipa group-show "$group" --all --raw \
                 | awk '/^  member: uid=/ {sub(/^  member: uid=/,""); sub(/,.*/,""); if ($0 ~ /^o[0-9]{6}$/) print $0}')
