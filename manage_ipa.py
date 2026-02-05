@@ -81,7 +81,7 @@ def create_group():
     except errors.NotFound:
         pass
 
-    api.Command.group_add(group, desc=f"Ryhmä luokalle {group}")
+    api.Command.group_add(group, description=f"Ryhmä luokalle {group}")
     print(f"Luokka luotu: {group}")
     write_log(f"Luotiin ryhmä {group}")
 
