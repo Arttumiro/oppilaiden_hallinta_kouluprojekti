@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # Author: Arttumiro
-# FreeIPA Luokkahallinta — Batch + Case optimized
+# FreeIPA Luokkahallinta
 
+#Lisää Regex tuen
 import re
+
 import os
 from datetime import datetime
-from ipalib import api, errors
+from ipalib import api, errors, config
 
 LOGFILE = "ipa_luokkahallinta.log"
-MAX_LOGS = 10
+#Varmistaa, ettei logitiedosto vie liian paljon tilaa, mutta silti hyödyllinen
+MAX_LOGS = 50
 
-
-# ---------------- LOGGING ----------------
 def write_log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{ts}] {msg}\n"
@@ -27,26 +28,28 @@ def write_log(msg):
     with open(LOGFILE, "w") as f:
         f.writelines(lines)
 
-
-# ---------------- IPA INIT ----------------
+# Jos suoritetaan palvelimella, ei tarvitse Kerberos tikettiä
 def init_ipa():
+    server_check = False
     try:
-        api.bootstrap(context="cli")
+        server_check = config.in_server()
+        api.bootstrap(context="cli" if not server_check else "server", in_server=server_check)
         api.finalize()
-        api.Backend.rpcclient.connect()
+        if not server_check:
+            api.Backend.rpcclient.connect()
     except Exception:
         print("Virhe: Kerberos / IPA ei käytettävissä")
-        print("Suorita: kinit admin")
+        if not server_check:
+            print("Suorita: 'kinit admin', ja yritä uudelleen")
+        else:
+            print("Suorita komento uudestaan sudo-oikeuksilla")
         exit(1)
-
 
 init_ipa()
 
-
-# ---------------- HELPERS ----------------
-def sanitize_group_name(name):
+# ---------------- Helper Functions ----------------
+def sanitize_class_name(name):
     return name.lower().replace("ä", "a").replace("ö", "o")
-
 
 def normalize_uid(uid):
     uid = uid.strip()
@@ -56,27 +59,24 @@ def normalize_uid(uid):
         return uid
     return None
 
-
-def validate_group_name(group):
+def validate_class_name(group):
     return re.fullmatch(r"s[0-9]{2}[a-z]{4}", group)
 
-
-# ---------------- CREATE GROUP ----------------
-def create_group():
-    raw = input("Luokan nimike: ").strip()
+def create_class():
+    raw = input("Luokan nimi (esim. s23ätiv): ").strip()
     if not raw:
-        print("Virhe: tyhjä nimi")
+        print("Virhe: Tyhjä nimi")
         return
 
-    group = sanitize_group_name(raw)
+    group = sanitize_class_name(raw)
 
-    if not validate_group_name(group):
-        print("Virhe: väärä ryhmän muoto")
+    if not validate_class_name(group):
+        print("Virhe: Luokan nimi väärässä muodossa")
         return
 
     try:
         api.Command.group_show(group)
-        print("Ryhmää ei luotu — jo olemassa")
+        print("Virhe: Ryhmää ei luotu, luokka on jo olemassa")
         return
     except errors.NotFound:
         pass
@@ -85,19 +85,17 @@ def create_group():
     print(f"Luokka luotu: {group}")
     write_log(f"Luotiin ryhmä {group}")
 
-
-# ---------------- CREATE USER ----------------
-def create_user():
+def create_student():
     raw = input("Oppilastunnus (231054 / o231054): ").strip()
     uid = normalize_uid(raw)
 
     if not uid:
-        print("Virhe: tunnus väärin")
+        print("Virhe: Tunnus väärin")
         return
 
     try:
         api.Command.user_show(uid)
-        print("Käyttäjä on jo olemassa")
+        print("Virhe: Käyttäjä on jo olemassa")
         return
     except errors.NotFound:
         pass
@@ -106,32 +104,33 @@ def create_user():
     lname = input("Sukunimi: ").strip()
 
     if not fname or not lname:
-        print("Virhe: nimi puuttuu")
+        if not fname:
+            print ("Virhe: Etunimi puuttuu")
+        else:
+            print("Virhe: Sukunimi puuttuu")
         return
 
-    api.Command.user_add(uid, givenname=fname, sn=lname, userpassword="changeme")
+    api.Command.user_add(uid, givenname=fname, sn=lname, cn=f"{fname} {lname}", userpassword="changeme")
 
     print(f"Käyttäjä luotu: {uid} (salasana: changeme)")
     write_log(f"Luotiin käyttäjä {uid}")
 
-    if input("Lisätäänkö luokkaan? (k/e): ").lower() == "k":
-        group = sanitize_group_name(input("Luokan nimi: "))
+    if input("Lisätäänkö luokkaan? (k/e): ").strip().lower() == "k":
+        group = sanitize_class_name(input("Luokan nimi, (esim. s23ätiv): ").strip())
 
         try:
             api.Command.group_add_member(group, user=[uid])
-            print(f"Käyttäjä lisätty ryhmään {group}")
-            write_log(f"{uid} lisätty ryhmään {group}")
+            print(f"Käyttäjä lisätty luokkaan {group}")
+            write_log(f"{uid} lisätty luokkaan {group}")
         except errors.NotFound:
-            print("Ryhmää ei ole")
+            print("Virhe: Luokalle ei ole ryhmää")
 
-
-# ---------------- ADD USERS TO GROUP (FULL BATCH) ----------------
-def add_users_to_group():
+def add_students_to_class():
     raw = input("Oppilastunnukset pilkulla erotettuna: ")
-    group = sanitize_group_name(input("Luokan nimi: "))
+    group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
 
-    if not validate_group_name(group):
-        print("Virhe: väärä ryhmän muoto")
+    if not validate_class_name(group):
+        print("Virhe: Väärä luokan muoto")
         return
 
     raw_users = raw.replace(",", " ").split()
@@ -144,38 +143,39 @@ def add_users_to_group():
         if uid:
             normalized.append(uid)
         else:
-            skipped.append(f"{u} (virheellinen)")
+            skipped.append(f"{u} (virheellinen oppilastunnus)")
 
     if not normalized:
-        print("Ei kelvollisia käyttäjiä")
+        print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # ---- Batch: user existence check ----
+    # ---- Make sure student exists ----
     batch_check = [
-        ("user_show", [uid], {}) for uid in normalized
+        {"method": "user_show", "params": [[uid], {}]}
+        for uid in normalized
     ]
     check_result = api.Command.batch(batch_check)
 
-    existing = []
+    students = []
     for uid, res in zip(normalized, check_result["results"]):
         if "error" in res:
-            skipped.append(f"{uid} (ei ole)")
+            skipped.append(f"{uid} (Käyttäjää ei ole)")
         else:
-            existing.append(uid)
+            students.append(uid)
 
-    if not existing:
-        print("Ei lisättäviä käyttäjiä")
+    if not students:
+        print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # ---- Batch: group add ----
+    # ---- Add Student to Class ----
     batch_add = [
-        ("group_add_member", [group], {"user": [uid]})
-        for uid in existing
+        {"method": "group_add_member", "params": [[group], {"user": [uid]}]}
+        for uid in students
     ]
     add_result = api.Command.batch(batch_add)
 
     added = []
-    for uid, res in zip(existing, add_result["results"]):
+    for uid, res in zip(students, add_result["results"]):
         if "error" in res:
             skipped.append(f"{uid} (jo jäsen)")
         else:
@@ -184,44 +184,45 @@ def add_users_to_group():
     print("------------------------------------------------")
     print("Luokka:", group)
     if added:
-        print("Lisätty:", ", ".join(added))
-        write_log(f"LISÄTTY RYHMÄÄN {group}: {', '.join(added)}")
+        print(f"Lisätty: {', '.join(added)}")
+        write_log(f"Lisätty luokkaan {group}: {', '.join(added)}")
     if skipped:
-        print("Ohitetut:", ", ".join(skipped))
+        print(f"Ohitetut: {', '.join(skipped)}")
+        write_log(f"Ohitetut: {', '.join(skipped)}")
     print("------------------------------------------------")
 
-    write_log(f"Batch: {len(added)} käyttäjää lisätty ryhmään {group}")
+    write_log(f"{len(added)} käyttäjää lisätty luokkaan {group}")
+    write_log(f"{len(skipped)} käyttäjän lisääminen epäonnistunut luokkaan {group}")
 
-
-# ---------------- LIST GROUPS (BATCH) ----------------
-def list_groups():
+def list_classes():
     result = api.Command.group_find()
 
     print("Luokat:")
     groups = [
         g["cn"][0]
         for g in result["result"]
-        if validate_group_name(g["cn"][0])
+        if validate_class_name(g["cn"][0])
     ]
 
     for g in sorted(groups):
         print(g)
 
-
-# ---------------- LIST USERS (BATCH + FILTER) ----------------
-def list_users():
+def list_students():
     group_filter = None
 
-    if input("Rajataanko luokan mukaan? (k/e): ").lower() == "k":
-        group = sanitize_group_name(input("Luokan nimi: "))
+    if input("Rajataanko luokan mukaan? (k/e): ").strip().lower() == "k":
+        group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
 
         try:
             data = api.Command.group_show(group)
-            group_filter = set(data["result"].get("member_user", []))
+            members = data["result"].get("member_user", [])
+            members += data["result"].get("memberindirect_user", [])
+            group_filter = set(members)
         except errors.NotFound:
-            print("Ryhmää ei ole — näytetään kaikki")
+            print(f"Virhe: Luokkaa {group} ei ole")
+            return
 
-    users = api.Command.user_find(all=True)
+    users = api.Command.user_find(all=True, sizelimit=0)
 
     print("------------------------------------------------")
     print("{:<15} {:<20} {:<20}".format("Tunnus", "Etunimi", "Sukunimi"))
@@ -243,40 +244,37 @@ def list_users():
 
     print("------------------------------------------------")
 
-
-# ---------------- MENU ----------------
 def show_menu():
     print("\n=============================")
     print("   FreeIPA Luokkahallinta")
     print("=============================")
     print("1) Uusi luokka")
     print("2) Uusi oppilas")
-    print("3) Lisää oppilaita luokkaan (BATCH)")
+    print("3) Lisää oppilaita luokkaan")
     print("4) Listaa luokat")
     print("5) Listaa oppilaat")
     print("6) Poistu")
 
-
-# ---------------- MAIN LOOP (CASE) ----------------
+# ---------------- MENU LOOP ----------------
 while True:
     show_menu()
     choice = input("Valitse [1-6]: ").strip()
 
     match choice:
         case "1":
-            create_group()
+            create_class()
 
         case "2":
-            create_user()
+            create_student()
 
         case "3":
-            add_users_to_group()
+            add_students_to_class()
 
         case "4":
-            list_groups()
+            list_classes()
 
         case "5":
-            list_users()
+            list_students()
 
         case "6":
             print("Valmis!")
