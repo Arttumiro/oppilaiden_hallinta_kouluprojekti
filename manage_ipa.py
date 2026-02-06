@@ -10,7 +10,7 @@ import unicodedata
 
 import os
 from datetime import datetime
-from ipalib import api, errors, config
+from ipalib import api, errors
 
 LOGFILE = "ipa_luokkahallinta.log"
 #Varmistaa, ettei logitiedosto vie liian paljon tilaa, mutta silti hyödyllinen
@@ -31,21 +31,34 @@ def write_log(msg):
     with open(LOGFILE, "w") as f:
         f.writelines(lines)
 
-# Jos suoritetaan palvelimella, ei tarvitse Kerberos tikettiä
+# Jos suoritetaan palvelimella, ei tarvitse Kerberos tikettiä tai rpc yhteyttä
 def init_ipa():
-    server_check = False
+    server_check = os.path.exists("/etc/ipa/server.conf")
     try:
-        server_check = config.in_server()
-        api.bootstrap(context="cli" if not server_check else "server", in_server=server_check)
-        api.finalize()
-        if not server_check:
-            api.Backend.rpcclient.connect()
-    except Exception:
-        print("Virhe: Kerberos / IPA ei käytettävissä")
-        if not server_check:
-            print("Suorita: 'kinit admin', ja yritä uudelleen")
+        if server_check:
+            if os.geteuid() != 0:
+                raise PermissionError("Root-oikeudet vaaditaan FreeIPA-palvelimella.")
+
+            api.bootstrap(context="server")
+            api.finalize()
         else:
-            print("Suorita komento uudestaan sudo-oikeuksilla")
+            api.bootstrap(context="cli")
+            api.finalize()
+            try:
+                api.Backend.rpcclient.connect()
+            except errors.ACIError:
+                raise PermissionError("Kerberos-tiketin käyttöoikeudet eivät riitä. Suorita 'kinit admin'.")
+            except errors.KerberosError:
+                raise PermissionError("Kerberos-tiketti puuttuu. Suorita 'kinit admin'.")
+            except Exception as e:
+                raise RuntimeError(f"Yhteysvirhe: {e}")
+
+    except PermissionError as e:
+        print(f"Virhe: {e}")
+        exit(1)
+
+    except Exception as e:
+        print(f"Odottamaton virhe: {e}")
         exit(1)
 
 init_ipa()
@@ -94,9 +107,12 @@ def create_class():
     except errors.NotFound:
         pass
 
-    api.Command.group_add(group, description=f"Ryhmä luokalle {group}")
-    print(f"Luokka luotu: {group}")
-    write_log(f"Luotiin ryhmä {group}")
+    try:
+        api.Command.group_add(group, description=f"Ryhmä luokalle {group}")
+        print(f"Luokka luotu: {group}")
+        write_log(f"Luotiin ryhmä {group}")
+    except Exception as e:
+        print(f"Virhe luodessa luokkaa: {e}")
 
 def create_student():
     raw = input("Oppilastunnus (231054 / o231054): ").strip()
@@ -123,20 +139,23 @@ def create_student():
             print("Virhe: Sukunimi puuttuu")
         return
 
-    api.Command.user_add(uid, givenname=fname, sn=lname, cn=f"{fname} {lname}", userpassword="changeme")
-
-    print(f"Käyttäjä luotu: {uid} (salasana: changeme)")
-    write_log(f"Luotiin käyttäjä {uid}")
+    try:
+        api.Command.user_add(uid, givenname=fname, sn=lname,
+                             cn=f"{fname} {lname}", userpassword="changeme")
+        print(f"Käyttäjä luotu: {uid} (salasana: changeme)")
+        write_log(f"Luotiin käyttäjä {uid}")
+    except Exception as e:
+        print(f"Virhe käyttäjän luonnissa: {e}")
+        return
 
     if input("Lisätäänkö luokkaan? (k/e): ").strip().lower() == "k":
-        group = sanitize_class_name(input("Luokan nimi, (esim. s23ätiv): ").strip())
-
+        group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv: ").strip())
         try:
             api.Command.group_add_member(group, user=[uid])
             print(f"Käyttäjä lisätty luokkaan {group}")
             write_log(f"{uid} lisätty luokkaan {group}")
-        except errors.NotFound:
-            print("Virhe: Luokalle ei ole ryhmää")
+        except Exception as e:
+            print(f"Virhe lisättäessä luokkaan: {e}")
 
 def add_students_to_class():
     raw = input("Oppilastunnukset pilkuilla tai välilyönneillä erotettuna: ")
