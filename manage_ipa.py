@@ -5,6 +5,9 @@
 #Lisää Regex tuen
 import re
 
+#Parempi normalisointi
+import unicodedata
+
 import os
 from datetime import datetime
 from ipalib import api, errors, config
@@ -47,9 +50,19 @@ def init_ipa():
 
 init_ipa()
 
-# ---------------- Helper Functions ----------------
+# Helper Functions
 def sanitize_class_name(name):
-    return name.lower().replace("ä", "a").replace("ö", "o")
+    # Muuta pieniksi kirjaimiksi
+    name = name.lower()
+
+    # Poista aksentit ja skandit (ä → a, ö → o, å → a)
+    name = unicodedata.normalize("NFKD", name)
+    name = name.encode("ascii", "ignore").decode()
+
+    # Poista kaikki muut kuin a–z ja numerot
+    name = re.sub(r"[^a-z0-9]", "", name)
+
+    return name
 
 def normalize_uid(uid):
     uid = uid.strip()
@@ -126,7 +139,7 @@ def create_student():
             print("Virhe: Luokalle ei ole ryhmää")
 
 def add_students_to_class():
-    raw = input("Oppilastunnukset pilkulla erotettuna: ")
+    raw = input("Oppilastunnukset pilkuilla tai välilyönneillä erotettuna: ")
     group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
 
     if not validate_class_name(group):
@@ -149,7 +162,7 @@ def add_students_to_class():
         print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # ---- Make sure student exists ----
+    # Make sure Student exists
     batch_check = [
         {"method": "user_show", "params": [[uid], {}]}
         for uid in normalized
@@ -158,7 +171,7 @@ def add_students_to_class():
 
     students = []
     for uid, res in zip(normalized, check_result["results"]):
-        if "error" in res:
+        if res.get("error"):
             skipped.append(f"{uid} (Käyttäjää ei ole)")
         else:
             students.append(uid)
@@ -167,7 +180,7 @@ def add_students_to_class():
         print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # ---- Add Student to Class ----
+    # Add Student to Class
     batch_add = [
         {"method": "group_add_member", "params": [[group], {"user": [uid]}]}
         for uid in students
@@ -176,7 +189,7 @@ def add_students_to_class():
 
     added = []
     for uid, res in zip(students, add_result["results"]):
-        if "error" in res:
+        if res.get("error"):
             skipped.append(f"{uid} (jo jäsen)")
         else:
             added.append(uid)
@@ -255,7 +268,7 @@ def show_menu():
     print("5) Listaa oppilaat")
     print("6) Poistu")
 
-# ---------------- MENU LOOP ----------------
+# Menu loop
 while True:
     show_menu()
     choice = input("Valitse [1-6]: ").strip()
