@@ -41,6 +41,7 @@ def init_ipa():
 
             api.bootstrap(context="server")
             api.finalize()
+            api.Backend.ldap2.connect()
         else:
             api.bootstrap(context="cli")
             api.finalize()
@@ -68,7 +69,7 @@ def sanitize_class_name(name):
     # Muuta pieniksi kirjaimiksi
     name = name.lower()
 
-    # Poista aksentit ja skandit (ä → a, ö → o, å → a)
+    # Poista aksentit ja skandit (ä > a, ö > o, å > a)
     name = unicodedata.normalize("NFKD", name)
     name = name.encode("ascii", "ignore").decode()
 
@@ -87,6 +88,30 @@ def normalize_uid(uid):
 
 def validate_class_name(group):
     return re.fullmatch(r"s[0-9]{2}[a-z]{4}", group)
+
+def get_group_users(group):
+    if seen is None:
+        seen = set()
+
+    if group in seen:
+        return set()
+
+    seen.add(group)
+
+    data = api.Command.group_show(group)
+    result = data["result"]
+
+    users = set()
+
+    # Suorat käyttäjät
+    for uid in result.get("member_user") or []:
+        users.add(uid)
+
+    # Epäsuorat käyttäjät
+    for uid in result.get"memberindirect_user") or []:
+        users.add(uid)
+
+    return users
 
 def create_class():
     raw = input("Luokan nimi (esim. s23ätiv): ").strip()
@@ -246,10 +271,12 @@ def list_students():
         group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
 
         try:
-            data = api.Command.group_show(group)
-            members = data["result"].get("member_user", [])
-            members += data["result"].get("memberindirect_user", [])
-            group_filter = set(members)
+            group_filter = get_group_users(group)
+
+            if not group_filter:
+                print("Virhe: Ryhmässä ei löytynyt käyttäjiä")
+                return
+
         except errors.NotFound:
             print(f"Virhe: Luokkaa {group} ei ole")
             return
