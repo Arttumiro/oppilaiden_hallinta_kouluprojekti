@@ -108,7 +108,7 @@ def get_group_users(group):
         users.add(uid)
 
     # Epäsuorat käyttäjät
-    for uid in result.get"memberindirect_user") or []:
+    for uid in result.get("memberindirect_user") or []:
         users.add(uid)
 
     return users
