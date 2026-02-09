@@ -14,7 +14,7 @@ from ipalib import api, errors
 
 LOGFILE = "ipa_luokkahallinta.log"
 #Varmistaa, ettei logitiedosto vie liian paljon tilaa, mutta silti hyödyllinen
-MAX_LOGS = 50
+MAX_LOGS = 200
 
 def write_log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -200,7 +200,7 @@ def add_students_to_class():
 
     # Make sure Student exists
     batch_check = [
-        {"method": "user_show", "params": [[uid], {}]}
+        {"method": "user_show", "params": [[uid], {}]} 
         for uid in normalized
     ]
     check_result = api.Command.batch(batch_check)
@@ -208,7 +208,7 @@ def add_students_to_class():
     students = []
     for uid, res in zip(normalized, check_result["results"]):
         if res.get("error"):
-            skipped.append(f"{uid} (Käyttäjää ei ole)")
+            skipped.append(f"{uid} (käyttäjää ei ole)")
         else:
             students.append(uid)
 
@@ -216,19 +216,25 @@ def add_students_to_class():
         print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # Add Student to Class
-    batch_add = [
-        {"method": "group_add_member", "params": [[group], {"user": [uid]}]}
-        for uid in students
-    ]
-    add_result = api.Command.batch(batch_add)
+    # Get current Students in Class
+    current_members = get_group_users(group)
 
+    to_add = [uid for uid in students if uid not in current_members]
+    already_in_group = [uid for uid in students if uid in current_members]
+
+    # Only add new users
     added = []
-    for uid, res in zip(students, add_result["results"]):
-        if res.get("error"):
-            skipped.append(f"{uid} (jo jäsen)")
-        else:
-            added.append(uid)
+    if to_add:
+        batch_add = [{"method": "group_add_member", "params": [[group], {"user": [uid]}]} for uid in to_add]
+        add_result = api.Command.batch(batch_add)
+
+        for uid, res in zip(to_add, add_result["results"]):
+            if res.get("error"):
+                skipped.append(f"{uid} (lisäys epäonnistui)")
+            else:
+                added.append(uid)
+
+    skipped.extend([f"{uid} (jo jäsen)" for uid in already_in_group])
 
     print("------------------------------------------------")
     print("Luokka:", group)
