@@ -166,7 +166,7 @@ def create_student():
         return
 
     if input("Lisätäänkö luokkaan? (k/e): ").strip().lower() == "k":
-        group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv: ").strip())
+        group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
         try:
             api.Command.group_add_member(group, user=[uid])
             print(f"Käyttäjä lisätty luokkaan {group}")
