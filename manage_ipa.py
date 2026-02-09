@@ -64,7 +64,7 @@ def init_ipa():
 
 init_ipa()
 
-# Helper Functions
+# Helpperi funktiot
 def sanitize_class_name(name):
     # Muuta pieniksi kirjaimiksi
     name = name.lower()
@@ -90,18 +90,21 @@ def validate_class_name(group):
     return re.fullmatch(r"s[0-9]{2}[a-z]{4}", group)
 
 def get_group_users(group):
-    data = api.Command.group_show(group)
-    result = data["result"]
+    data = api.Command.group_show(group)["result"]
 
-    users = set()
+    uids = list(data.get("member_user") or [])
+    uids += list(data.get("memberindirect_user") or [])
 
-    # Suorat käyttäjät
-    for uid in result.get("member_user") or []:
-        users.add(uid)
+    if not uids:
+        return []
 
-    # Epäsuorat käyttäjät
-    for uid in result.get("memberindirect_user") or []:
-        users.add(uid)
+    batch_requests = [{"method": "user_show", "params": [[uid], {}]} for uid in uids]
+    batch_result = api.Command.batch(batch_requests)
+
+    users = []
+    for res in batch_result["results"]:
+        if not res.get("error"):
+            users.append(res["result"])
 
     return users
 
@@ -198,7 +201,7 @@ def add_students_to_class():
         print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # Make sure Student exists
+    # Varmista, että Oppilas on olemassa
     batch_check = [
         {"method": "user_show", "params": [[uid], {}]} 
         for uid in normalized
@@ -216,13 +219,13 @@ def add_students_to_class():
         print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # Get current Students in Class
+    # Hae ryhmän nykyiset käyttäjät
     current_members = get_group_users(group)
 
     to_add = [uid for uid in students if uid not in current_members]
     already_in_group = [uid for uid in students if uid in current_members]
 
-    # Only add new users
+    # Lisää ainoastaan uudet käyttäjät
     added = []
     if to_add:
         batch_add = [{"method": "group_add_member", "params": [[group], {"user": [uid]}]} for uid in to_add]
@@ -269,29 +272,27 @@ def list_students():
         group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
 
         try:
-            group_filter = get_group_users(group)
+            users = get_group_users(group)
 
-            if not group_filter:
-                print("Virhe: Ryhmässä ei löytynyt käyttäjiä")
+            if not users:
+                print(f"Virhe: Ryhmässä {group} ei löytynyt käyttäjiä")
                 return
 
         except errors.NotFound:
             print(f"Virhe: Luokkaa {group} ei ole")
             return
 
-    users = api.Command.user_find(all=True, sizelimit=0)
+    else:
+        users = api.Command.user_find(all=True, sizelimit=0)["result"]
 
     print("------------------------------------------------")
     print("{:<15} {:<20} {:<20}".format("Tunnus", "Etunimi", "Sukunimi"))
     print("------------------------------------------------")
 
-    for u in users["result"]:
+    for u in users:
         uid = u["uid"][0]
 
         if not re.fullmatch(r"o[0-9]{6}", uid):
-            continue
-
-        if group_filter and uid not in group_filter:
             continue
 
         fname = u.get("givenname", [""])[0]
