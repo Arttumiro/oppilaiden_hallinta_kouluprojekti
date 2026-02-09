@@ -90,14 +90,6 @@ def validate_class_name(group):
     return re.fullmatch(r"s[0-9]{2}[a-z]{4}", group)
 
 def get_group_users(group):
-    if seen is None:
-        seen = set()
-
-    if group in seen:
-        return set()
-
-    seen.add(group)
-
     data = api.Command.group_show(group)
     result = data["result"]
 
