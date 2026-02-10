@@ -253,16 +253,20 @@ def add_students_to_class():
     write_log(f"{len(skipped)} oppilaan lisääminen epäonnistunut luokkaan {group}")
 
 def list_classes():
-    result = api.Command.group_find()
-
+    result = api.Command.group_find(
+        criteria="s",
+        sizelimit=0
+    )
+   
     print("Luokat:")
-    groups = [
+
+    groups = sorted(
         g["cn"][0]
         for g in result["result"]
-        if validate_class_name(g["cn"][0])
-    ]
+        if g.get("cn") and validate_class_name(g["cn"][0])
+    )
 
-    for g in sorted(groups):
+    for g in groups:
         print(g)
 
 def list_students():
