@@ -37,7 +37,7 @@ def init_ipa():
     try:
         if server_check:
             if os.geteuid() != 0:
-                raise PermissionError("Root-oikeudet vaaditaan FreeIPA-palvelimella.")
+                raise PermissionError("Root-oikeudet vaaditaan FreeIPA-palvelimella. (sudo)")
 
             api.bootstrap(context="server")
             api.finalize()
@@ -129,8 +129,8 @@ def create_class():
 
     try:
         api.Command.group_add(group, description=f"Ryhmä luokalle {group}")
-        print(f"Luokka luotu: {group}")
-        write_log(f"Luotiin ryhmä {group}")
+        print(f"Ryhmä luotu luokalle: {group}")
+        write_log(f"Luotiin ryhmä luokalle {group}")
     except Exception as e:
         print(f"Virhe luodessa luokkaa: {e}")
 
@@ -201,7 +201,7 @@ def add_students_to_class():
         print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # Varmista, että Oppilas on olemassa
+    # Varmista, että käyttäjä on olemassa
     batch_check = [
         {"method": "user_show", "params": [[uid], {}]} 
         for uid in normalized
@@ -249,8 +249,8 @@ def add_students_to_class():
         write_log(f"Ohitetut: {', '.join(skipped)}")
     print("------------------------------------------------")
 
-    write_log(f"{len(added)} käyttäjää lisätty luokkaan {group}")
-    write_log(f"{len(skipped)} käyttäjän lisääminen epäonnistunut luokkaan {group}")
+    write_log(f"{len(added)} oppilasta lisätty luokkaan {group}")
+    write_log(f"{len(skipped)} oppilaan lisääminen epäonnistunut luokkaan {group}")
 
 def list_classes():
     result = api.Command.group_find()
