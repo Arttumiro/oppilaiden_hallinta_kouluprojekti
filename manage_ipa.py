@@ -38,15 +38,20 @@ def init_ipa():
         if server_check:
             if os.geteuid() != 0:
                 raise PermissionError("Root-oikeudet vaaditaan FreeIPA-palvelimella. (sudo)")
-
+            
+            print("Käynnistyy...")
             api.bootstrap(context="server")
             api.finalize()
             api.Backend.ldap2.connect()
+            print("Valmis!")
         else:
+            print("Käynnistyy...")
             api.bootstrap(context="cli")
             api.finalize()
             try:
                 api.Backend.rpcclient.connect()
+                print("Valmis!")
+
             except errors.ACIError:
                 raise PermissionError("Kerberos-tiketin käyttöoikeudet eivät riitä. Suorita 'kinit admin'.")
             except errors.KerberosError:
@@ -61,8 +66,6 @@ def init_ipa():
     except Exception as e:
         print(f"Odottamaton virhe: {e}")
         exit(1)
-
-init_ipa()
 
 # Helpperi funktiot
 def sanitize_class_name(name):
@@ -318,7 +321,13 @@ def show_menu():
     print("6) Poistu")
 
 # Menu loop
+
+ipa_initialized = False
+
 while True:
+    if not ipa_initialized:
+        init_ipa()
+        ipa_initialized = True
     show_menu()
     choice = input("Valitse [1-6]: ").strip()
 
