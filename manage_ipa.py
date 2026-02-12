@@ -236,7 +236,7 @@ def add_students_to_class():
 
         for uid, res in zip(to_add, add_result["results"]):
             if res.get("error"):
-                skipped.append(f"{uid} (lisäys epäonnistui)")
+                skipped.append(f"{uid} (jotain meni pieleen lisätessä ryhmään)")
             else:
                 added.append(uid)
 
@@ -247,13 +247,13 @@ def add_students_to_class():
     if added:
         print(f"Lisätty: {', '.join(added)}")
         write_log(f"Lisätty luokkaan {group}: {', '.join(added)}")
+        write_log(f"{len(added)} oppilasta lisätty luokkaan {group}")
     if skipped:
         print(f"Ohitetut: {', '.join(skipped)}")
         write_log(f"Ohitetut: {', '.join(skipped)}")
+        write_log(f"{len(skipped)} oppilaan lisääminen epäonnistunut luokkaan {group}")
     print("------------------------------------------------")
 
-    write_log(f"{len(added)} oppilasta lisätty luokkaan {group}")
-    write_log(f"{len(skipped)} oppilaan lisääminen epäonnistunut luokkaan {group}")
 
 def list_classes():
     result = api.Command.group_find(
