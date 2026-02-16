@@ -68,6 +68,12 @@ def init_ipa():
         exit(1)
 
 # Helpperi funktiot
+
+# Regex kompilaatio
+UID_RE = re.compile(r"o[0-9]{6}")
+RAW_UID_RE = re.compile(r"[0-9]{6}")
+CLASS_RE = re.compile(r"s[0-9]{2}[a-z]{4}")
+
 def sanitize_class_name(name):
     # Muuta pieniksi kirjaimiksi
     name = name.lower()
@@ -83,14 +89,14 @@ def sanitize_class_name(name):
 
 def normalize_uid(uid):
     uid = uid.strip()
-    if re.fullmatch(r"[0-9]{6}", uid):
-        return "o" + uid
-    if re.fullmatch(r"o[0-9]{6}", uid):
+    if UID_RE.fullmatch(uid):
         return uid
+    if RAW_UID_RE.fullmatch(uid):
+        return "o" + uid
     return None
 
 def validate_class_name(group):
-    return re.fullmatch(r"s[0-9]{2}[a-z]{4}", group)
+    return bool(CLASS_RE.fullmatch(group))
 
 def get_group_users(group):
     data = api.Command.group_show(group)["result"]
@@ -157,7 +163,7 @@ def create_student():
 
     if not fname or not lname:
         if not fname:
-            print ("Virhe: Etunimi puuttuu")
+            print("Virhe: Etunimi puuttuu")
         else:
             print("Virhe: Sukunimi puuttuu")
         return
@@ -187,6 +193,11 @@ def add_students_to_class():
     if not validate_class_name(group):
         print("Virhe: Väärä luokan muoto")
         return
+    try:
+        api.Command.group_show(group)
+    except errors.NotFound:
+        print(f"Virhe: Luokkaa {group} ei ole")
+        return
 
     raw_users = raw.replace(",", " ").split()
 
@@ -200,11 +211,14 @@ def add_students_to_class():
         else:
             skipped.append(f"{u} (virheellinen oppilastunnus)")
 
+    # Poista duplikaatit
+    normalized = list(dict.fromkeys(normalized))
+
     if not normalized:
         print(f"Virhe: {', '.join(skipped)}")
         return
 
-    # Varmista, että käyttäjä on olemassa
+    # Varmista, että käyttäjät ovat olemassa
     batch_check = [
         {"method": "user_show", "params": [[uid], {}]} 
         for uid in normalized
@@ -223,25 +237,27 @@ def add_students_to_class():
         return
 
     # Hae ryhmän nykyiset käyttäjät
-    current_members = get_group_users(group)
+    current_members = {u["uid"][0] for u in get_group_users(group)}
 
+    # Jätä vain uudet käyttäjät
     to_add = [uid for uid in students if uid not in current_members]
     already_in_group = [uid for uid in students if uid in current_members]
 
-    # Lisää ainoastaan uudet käyttäjät
     added = []
     if to_add:
-        batch_add = [{"method": "group_add_member", "params": [[group], {"user": [uid]}]} for uid in to_add]
-        add_result = api.Command.batch(batch_add)
+        try:
+            result = api.Command.group_add_member(group, user=to_add)
+            added = result.get("completed", {}).get("user", [])
+            failed = result.get("failed", {}).get("user", [])
 
-        for uid, res in zip(to_add, add_result["results"]):
-            if res.get("error"):
-                skipped.append(f"{uid} (jotain meni pieleen lisätessä ryhmään)")
-            else:
-                added.append(uid)
+            for uid, reason in failed:
+                skipped.append(f"{uid} ({reason})")
+        except Exception as e:
+            skipped.extend([f"{uid} (lisäys epäonnistui: {e})" for uid in to_add])
 
     skipped.extend([f"{uid} (jo jäsen)" for uid in already_in_group])
 
+    # Tulostus ja lokitus
     print("------------------------------------------------")
     print("Luokka:", group)
     if added:
@@ -253,7 +269,6 @@ def add_students_to_class():
         write_log(f"Ohitetut: {', '.join(skipped)}")
         write_log(f"{len(skipped)} oppilaan lisääminen epäonnistunut luokkaan {group}")
     print("------------------------------------------------")
-
 
 def list_classes():
     result = api.Command.group_find(
@@ -273,8 +288,6 @@ def list_classes():
         print(g)
 
 def list_students():
-    group_filter = None
-
     if input("Rajataanko luokan mukaan? (k/e): ").strip().lower() == "k":
         group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
 
@@ -282,7 +295,7 @@ def list_students():
             users = get_group_users(group)
 
             if not users:
-                print(f"Virhe: Ryhmässä {group} ei löytynyt käyttäjiä")
+                print(f"Ryhmässä {group} ei löytynyt käyttäjiä")
                 return
 
         except errors.NotFound:
@@ -299,7 +312,7 @@ def list_students():
     for u in users:
         uid = u["uid"][0]
 
-        if not re.fullmatch(r"o[0-9]{6}", uid):
+        if not UID_RE.fullmatch(uid):
             continue
 
         fname = u.get("givenname", [""])[0]
