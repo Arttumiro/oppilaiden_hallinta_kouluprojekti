@@ -159,10 +159,17 @@ def create_student():
 
     if input("Lisätäänkö luokkaan? (k/e): ").strip().lower() == "k":
         group = sanitize_class_name(input("Luokan nimi (esim. s23ätiv): ").strip())
+        if not validate_class_name(group):
+            print("Virhe: Luokan nimi väärässä muodossa")
+            return
         try:
+            api.Command.group_show(group)
             api.Command.group_add_member(group, user=[uid])
             print(f"Käyttäjä lisätty luokkaan {group}")
             write_log(f"{uid} lisätty luokkaan {group}")
+        except errors.NotFound:
+            print(f"Virhe: Luokkaa {group} ei ole")
+            return
         except Exception as e:
             print(f"Virhe lisättäessä luokkaan: {e}")
             return
