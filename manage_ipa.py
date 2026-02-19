@@ -98,6 +98,9 @@ def normalize_uid(uid):
 def validate_class_name(group):
     return bool(CLASS_RE.fullmatch(group))
 
+
+# Pää funktiot
+
 def create_class():
     raw = input("Luokan nimi (esim. s23ätiv): ").strip()
     if not raw:
