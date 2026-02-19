@@ -130,18 +130,17 @@ def create_class():
         return
 
     try:
-        api.Command.group_show(group)
-        print("Virhe: Ryhmää ei luotu, luokka on jo olemassa")
-        return
-    except errors.NotFound:
-        pass
-
-    try:
         api.Command.group_add(group, description=f"Ryhmä luokalle {group}")
         print(f"Ryhmä luotu luokalle: {group}")
         write_log(f"Luotiin ryhmä luokalle {group}")
+        
+    except errors.DuplicateEntry:
+        print("Virhe: Luokka on jo olemassa")
+        return
+        
     except Exception as e:
         print(f"Virhe luodessa luokkaa: {e}")
+        return
 
 def create_student():
     raw = input("Oppilastunnus (231054 / o231054): ").strip()
@@ -150,13 +149,6 @@ def create_student():
     if not uid:
         print("Virhe: Tunnus väärin")
         return
-
-    try:
-        api.Command.user_show(uid)
-        print("Virhe: Käyttäjä on jo olemassa")
-        return
-    except errors.NotFound:
-        pass
 
     fname = input("Etunimi: ").strip()
     lname = input("Sukunimi: ").strip()
@@ -173,6 +165,11 @@ def create_student():
                              cn=f"{fname} {lname}", userpassword="changeme")
         print(f"Käyttäjä luotu: {uid} (salasana: changeme)")
         write_log(f"Luotiin käyttäjä {uid}")
+
+    except errors.DuplicateEntry:
+        print("Virhe: Käyttäjä on jo olemassa")
+        return
+    
     except Exception as e:
         print(f"Virhe käyttäjän luonnissa: {e}")
         return
@@ -185,6 +182,7 @@ def create_student():
             write_log(f"{uid} lisätty luokkaan {group}")
         except Exception as e:
             print(f"Virhe lisättäessä luokkaan: {e}")
+            return
 
 def add_students_to_class():
     raw = input("Oppilastunnukset pilkuilla tai välilyönneillä erotettuna: ")
