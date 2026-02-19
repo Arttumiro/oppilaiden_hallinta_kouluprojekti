@@ -224,9 +224,15 @@ def add_students_to_class():
         for uid in normalized
     ]
     check_result = api.Command.batch(batch_check)
+    
+    results = check_result.get("results", [])
 
     students = []
-    for uid, res in zip(normalized, check_result["results"]):
+    for uid, res in zip(normalized, results):
+        if not isinstance(res, dict):
+            skipped.append(f"{uid} (tarkistus epäonnistui)")
+            continue
+
         if res.get("error"):
             skipped.append(f"{uid} (käyttäjää ei ole)")
         else:
@@ -247,11 +253,21 @@ def add_students_to_class():
     if to_add:
         try:
             result = api.Command.group_add_member(group, user=to_add)
-            added = result.get("completed", {}).get("user", [])
-            failed = result.get("failed", {}).get("user", [])
 
-            for uid, reason in failed:
-                skipped.append(f"{uid} ({reason})")
+            completed_count = result.get("completed", 0)
+            added = to_add[:completed_count]
+
+            failed_users = []
+            failed_section = result.get("failed", {})
+
+            if isinstance(failed_section, dict):
+                member = failed_section.get("member", {})
+                if isinstance(member, dict):
+                    failed_users = member.get("user", [])
+
+            for uid in failed_users:
+                skipped.append(f"{uid} (lisäys epäonnistui)")
+
         except Exception as e:
             skipped.extend([f"{uid} (lisäys epäonnistui: {e})" for uid in to_add])
 
@@ -366,4 +382,3 @@ while True:
 
         case _:
             print("Virheellinen valinta")
-
