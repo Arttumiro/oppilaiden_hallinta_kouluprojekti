@@ -258,6 +258,12 @@ def list_students():
             return
 
         try:
+            api.Command.group_show(group)
+        except errors.NotFound:
+            print(f"Virhe: Luokkaa {group} ei ole")
+            return
+
+        try:
             result = api.Command.user_find(
                 in_group=group,
                 all=True,
@@ -270,8 +276,8 @@ def list_students():
                 print(f"Ryhmässä {group} ei löytynyt käyttäjiä")
                 return
 
-        except errors.NotFound:
-            print(f"Virhe: Luokkaa {group} ei ole")
+        except Exception as e:
+            print(f"Virhe käyttäjiä haettaessa: {e}")
             return
 
     else:
