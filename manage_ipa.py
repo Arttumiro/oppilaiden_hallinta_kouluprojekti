@@ -33,19 +33,18 @@ def write_log(msg):
 
 # Jos suoritetaan palvelimella, ei tarvitse Kerberos tikettiä tai rpc yhteyttä
 def init_ipa():
+    print("Käynnistyy...")
     server_check = os.path.exists("/etc/ipa/server.conf")
     try:
         if server_check:
             if os.geteuid() != 0:
                 raise PermissionError("Root-oikeudet vaaditaan FreeIPA-palvelimella. (sudo)")
-            
-            print("Käynnistyy...")
+                
             api.bootstrap(context="server")
             api.finalize()
             api.Backend.ldap2.connect()
             print("Valmis!")
         else:
-            print("Käynnistyy...")
             api.bootstrap(context="cli")
             api.finalize()
             try:
